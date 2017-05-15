@@ -108,7 +108,8 @@ with tf.name_scope("train"):
 
     # Create optimizer and apply gradient descent to the trainable variables
     optimizer = tf.train.AdamOptimizer(learning_rate)
-    train_op = optimizer.apply_gradients(grads_and_vars=gradients)
+    train_op = optimizer.apply_gradients(grads_and_vars=gradients,
+                                         global_step=global_step)
 
 # Add gradients to summary  
 for gradient, var in gradients:
@@ -133,7 +134,6 @@ tf.summary.scalar('accuracy', accuracy)
 merged_summary = tf.summary.merge_all()
 
 # Initialize the FileWriter
-# writer = tf.summary.FileWriter(filewriter_path + '/train')
 train_writer = tf.summary.FileWriter(logdir=filewriter_path + '/train')
 test_writer = tf.summary.FileWriter(logdir=filewriter_path + '/test')
 
@@ -147,13 +147,10 @@ train_generator = ImageDataGenerator(train_file,
 val_generator = ImageDataGenerator(val_file, shuffle=True)
 
 # Get the number of training/validation steps per epoch
-# train_batches_per_epoch = np.floor(
-#     train_generator.data_size / batch_size).astype(np.int16)
-# val_batches_per_epoch = np.floor(val_generator.data_size / batch_size).astype(
-#     np.int16)
-
-train_batches_per_epoch = 5
-val_batches_per_epoch = 2
+train_batches_per_epoch = np.floor(
+    train_generator.data_size / batch_size).astype(np.int16)
+val_batches_per_epoch = np.floor(val_generator.data_size / batch_size).astype(
+    np.int16)
 
 # Start Tensorflow session
 with tf.Session() as sess:
@@ -195,27 +192,22 @@ with tf.Session() as sess:
 
             # Generate summary with the current batch of data and write to file
             if step % display_step == 0:
-                acc, s = sess.run([accuracy, merged_summary], feed_dict=feed_dict_train)
-            # train_writer.add_summary(s, epoch * train_batches_per_epoch + step)
-                train_writer.add_summary(s, global_step=i_global)
+                # calculate accuracy on training batch
+                batch_acc, summary_str = sess.run(
+                    [accuracy, merged_summary],
+                    feed_dict=feed_dict_train
+                )
+                train_writer.add_summary(summary_str, global_step=i_global)
+
+                # calculate accuracy for validation batch
+                batch_tx, batch_ty = val_generator.next_batch(batch_size)
+                val_acc, summary_str_val = sess.run(
+                    [accuracy, merged_summary],
+                    feed_dict={x: batch_tx, y:batch_ty, keep_prob: 1.}
+                )
+                test_writer.add_summary(summary_str_val, global_step=i_global)
 
             step += 1
-
-        # # Validate the model on the entire validation set
-        # print("{} Start validation".format(datetime.now()))
-        # test_acc = 0.
-        # test_count = 0
-        # for _ in range(val_batches_per_epoch):
-        #     batch_tx, batch_ty = val_generator.next_batch(batch_size)
-        #     acc, s = sess.run([accuracy, merged_summary], feed_dict={x: batch_tx,
-        #                                         y: batch_ty,
-        #                                         keep_prob: 1.})
-        #     test_writer.add_summary(s, epoch * val_batches_per_epoch + val_step)
-        #     test_acc += acc
-        #     test_count += 1
-        #     val_step += 1
-        # test_acc /= test_count
-        # print("Validation Accuracy = {:.4f}".format(datetime.now(), test_acc))
 
         # Reset the file pointer of the image data generator
         val_generator.reset_pointer()
